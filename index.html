@@ -4,27 +4,33 @@
     <meta charset="UTF-8">
     <title>学生管理系统</title>
     <style>
-        body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; }
-        .form-group { margin-bottom: 1rem; }
-        input { padding: 0.5rem; width: 200px; }
-        button { padding: 0.5rem 1rem; cursor: pointer; }
+        body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        textarea { 
+            width: 100%; 
+            height: 150px;  /* 输入框变高 */
+            padding: 0.5rem; 
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+        button { padding: 0.5rem 1rem; cursor: pointer; font-size: 1rem; }
         table { width: 100%; border-collapse: collapse; margin-top: 2rem; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f5f5f5; }
+        .hint { color: #666; font-size: 0.9rem; margin-bottom: 0.5rem; }
     </style>
 </head>
 <body>
     <h1>学生管理系统</h1>
     
     <div class="form-group">
-        <input id="name" placeholder="姓名">
-        <input id="student_id" placeholder="学号">
-        <input id="class_name" placeholder="班级">
-        <button onclick="addStudent()">添加学生</button>
+        <label class="hint">请输入姓名，每行一个：</label>
+        <textarea id="names" placeholder="张三&#10;李四&#10;王五"></textarea>
+        <button onclick="addStudents()">批量添加</button>
     </div>
 
     <table>
         <thead>
-            <tr><th>姓名</th><th>学号</th><th>班级</th></tr>
+            <tr><th>ID</th><th>姓名</th><th>添加时间</th></tr>
         </thead>
         <tbody id="student-list"></tbody>
     </table>
@@ -37,30 +43,33 @@
             const tbody = document.getElementById('student-list');
             tbody.innerHTML = data.map(s => `
                 <tr>
+                    <td>${s.id}</td>
                     <td>${s.name}</td>
-                    <td>${s.student_id}</td>
-                    <td>${s.class_name}</td>
+                    <td>${s.created_at}</td>
                 </tr>
             `).join('');
         }
 
-        // 添加数据
-        async function addStudent() {
-            const name = document.getElementById('name').value;
-            const student_id = document.getElementById('student_id').value;
-            const class_name = document.getElementById('class_name').value;
+        // 批量添加学生
+        async function addStudents() {
+            const textarea = document.getElementById('names');
+            // 按换行分割，过滤空行
+            const names = textarea.value.split('\n').map(n => n.trim()).filter(n => n);
+            
+            if (names.length === 0) {
+                alert('请输入至少一个姓名');
+                return;
+            }
 
+            // 批量发送
             await fetch('/api/students', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, student_id, class_name })
+                body: JSON.stringify({ names: names })
             });
             
-            // 清空输入并刷新
-            document.getElementById('name').value = '';
-            document.getElementById('student_id').value = '';
-            document.getElementById('class_name').value = '';
-            loadStudents();
+            textarea.value = '';  // 清空输入框
+            loadStudents();       // 刷新列表
         }
 
         // 初始化
