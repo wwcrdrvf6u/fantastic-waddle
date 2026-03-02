@@ -51,6 +51,7 @@
             flex: 1;
             padding: 2rem;
             background: #f5f6fa;
+            overflow: auto;
         }
         .page { display: none; }
         .page.active { display: block; }
@@ -90,7 +91,7 @@
         .date-table {
             border-collapse: separate;
             border-spacing: 0;
-            min-width: 100%;
+            min-width: 1200px;  /* 最小宽度，触发横向滚动 */
         }
         .date-table th, .date-table td { 
             padding: 4px; 
@@ -145,13 +146,40 @@
         /* 工作日/周末背景色 */
         .date-table .weekday { background: #ecf0f1; }
         .date-table .weekend { background: #ffeaa7; }
-        /* 表格容器滚动 */
+        
+        /* ========== 表格容器（双向滚动条）========== */
         #meal-table-container {
             overflow: auto;
-            max-height: calc(100vh - 350px);
+            max-width: calc(100vw - 250px);  /* 限制最大宽度 */
+            max-height: calc(100vh - 350px);  /* 限制最大高度 */
             border: 1px solid #ddd;
             border-radius: 4px;
+            background: white;
+            /* Firefox 滚动条样式 */
+            scrollbar-width: thin;
+            scrollbar-color: #95a5a6 #f5f6fa;
         }
+        /* Webkit 浏览器滚动条样式 */
+        #meal-table-container::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        #meal-table-container::-webkit-scrollbar-track {
+            background: #f5f6fa;
+            border-radius: 5px;
+        }
+        #meal-table-container::-webkit-scrollbar-thumb {
+            background: #95a5a6;
+            border-radius: 5px;
+        }
+        #meal-table-container::-webkit-scrollbar-thumb:hover {
+            background: #7f8c8d;
+        }
+        /* 滚动条角落 */
+        #meal-table-container::-webkit-scrollbar-corner {
+            background: #f5f6fa;
+        }
+        
         /* ========== 其他样式 ========== */
         table { 
             width: 100%; 
@@ -266,6 +294,9 @@
             .sidebar { width: 150px; }
             .main { margin-left: 150px; padding: 1rem; }
             .stats { flex-direction: column; }
+            #meal-table-container {
+                max-width: calc(100vw - 180px);
+            }
         }
     </style>
 </head>
