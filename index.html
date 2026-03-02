@@ -338,7 +338,7 @@
             
             <!-- 自动保存提示 -->
             <div style="margin-top:1rem; color:#666; font-size:0.85rem;">
-                ✅ 修改后会自动保存（每 5 秒），也可点击"立即保存"按钮
+                ✅ 修改后会自动保存（每 10 秒），也可点击"立即保存"按钮
             </div>
         </div>
     </div>
@@ -369,10 +369,10 @@
         // 自动保存相关
         let pendingRecords = {};
         let hasUnsavedChanges = false;
-        let autoSaveTimer = null;
+        let isSaving = false;
         let countdownTimer = null;
-        let countdownSeconds = 5;
-        let lastSaveTime = null;
+        let countdownSeconds = 10;
+        const AUTO_SAVE_INTERVAL = 10; // 10 秒自动保存
         
         // ==================== 页面离开提醒 ====================
         window.addEventListener('beforeunload', (e) => {
@@ -415,34 +415,39 @@
         // 启动自动保存定时器
         function startAutoSave() {
             stopAutoSave();
-            countdownSeconds = 5;
+            countdownSeconds = AUTO_SAVE_INTERVAL;
+            isSaving = false;
             updateCountdown();
             
             countdownTimer = setInterval(() => {
+                // 如果正在保存，不减少倒计时
+                if (isSaving) {
+                    return;
+                }
+                
                 countdownSeconds--;
                 updateCountdown();
                 
                 if (countdownSeconds <= 0) {
                     if (hasUnsavedChanges && Object.keys(pendingRecords).length > 0) {
                         savePendingRecords();
+                    } else {
+                        // 没有待保存的，重置倒计时
+                        countdownSeconds = AUTO_SAVE_INTERVAL;
                     }
-                    countdownSeconds = 5;
                 }
             }, 1000);
         }
         
         // 停止自动保存
         function stopAutoSave() {
-            if (autoSaveTimer) {
-                clearTimeout(autoSaveTimer);
-                autoSaveTimer = null;
-            }
             if (countdownTimer) {
                 clearInterval(countdownTimer);
                 countdownTimer = null;
             }
             hasUnsavedChanges = false;
             pendingRecords = {};
+            isSaving = false;
             updateSaveStatus('', '');
         }
         
@@ -450,7 +455,11 @@
         function updateCountdown() {
             const countdownEl = document.getElementById('auto-save-countdown');
             if (countdownEl) {
-                countdownEl.textContent = `(${countdownSeconds}s)`;
+                if (isSaving) {
+                    countdownEl.textContent = '(保存中...)';
+                } else {
+                    countdownEl.textContent = `(${countdownSeconds}s)`;
+                }
             }
         }
         
@@ -493,6 +502,9 @@
                 return;
             }
             
+            // 设置保存中状态，暂停倒计时
+            isSaving = true;
+            updateCountdown();
             updateSaveStatus('💾 保存中...', 'saving');
             
             const records = Object.values(pendingRecords).map(record => ({
@@ -513,7 +525,11 @@
                 // 保存成功
                 pendingRecords = {};
                 hasUnsavedChanges = false;
-                lastSaveTime = new Date();
+                
+                // 保存完成后，重置倒计时为 10 秒
+                isSaving = false;
+                countdownSeconds = AUTO_SAVE_INTERVAL;
+                updateCountdown();
                 
                 updateSaveStatus(`✅ 已保存 ${new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute:'2-digit'})}`, 'saved');
                 
@@ -525,6 +541,9 @@
                 }, 3000);
                 
             } catch (e) {
+                isSaving = false;
+                countdownSeconds = AUTO_SAVE_INTERVAL;
+                updateCountdown();
                 updateSaveStatus('❌ 保存失败：' + e.message, 'error');
             }
         }
