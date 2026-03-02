@@ -212,14 +212,28 @@
             font-size: 0.9rem;
         }
         
-        /* 保存状态动画 */
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.6; }
-            100% { opacity: 1; }
+        /* 保存状态样式 */
+        #save-status {
+            margin-left: 1rem;
+            color: #666;
+            font-weight: 500;
         }
-        .saving {
-            animation: pulse 1s infinite;
+        #save-status.saving {
+            color: #f39c12;
+        }
+        #save-status.saved {
+            color: #27ae60;
+        }
+        #save-status.error {
+            color: #e74c3c;
+        }
+        
+        /* 倒计时显示 */
+        #auto-save-countdown {
+            display: inline-block;
+            margin-left: 0.5rem;
+            font-size: 0.85rem;
+            color: #95a5a6;
         }
         
         /* 响应式 */
@@ -287,8 +301,9 @@
             <!-- 操作栏 -->
             <div id="meal-actions" style="display:none; margin-bottom:1rem;">
                 <button class="btn-primary" onclick="openSettingsModal()">📅 修改学期日期</button>
-                <button class="btn-success" onclick="saveAllRecords()">💾 手动保存</button>
-                <span id="save-status" style="margin-left:1rem; color:#666;"></span>
+                <button class="btn-success" onclick="saveAllRecords()">💾 立即保存</button>
+                <span id="save-status">⏱️ 自动保存中</span>
+                <span id="auto-save-countdown"></span>
             </div>
             
             <!-- 导出区域 -->
@@ -323,7 +338,7 @@
             
             <!-- 自动保存提示 -->
             <div style="margin-top:1rem; color:#666; font-size:0.85rem;">
-                ✅ 勾选后会自动保存，无需手动点击保存按钮
+                ✅ 修改后会自动保存（每 5 秒），也可点击"立即保存"按钮
             </div>
         </div>
     </div>
@@ -346,25 +361,41 @@
     </div>
 
     <script>
-        // 全局状态
+        // ==================== 全局状态 ====================
         let students = [];
         let mealSettings = null;
         let mealRecords = {};
-        let autoSaveTimer = null;
+        
+        // 自动保存相关
         let pendingRecords = {};
         let hasUnsavedChanges = false;
+        let autoSaveTimer = null;
+        let countdownTimer = null;
+        let countdownSeconds = 5;
+        let lastSaveTime = null;
         
-        // 页面离开前提醒
+        // ==================== 页面离开提醒 ====================
         window.addEventListener('beforeunload', (e) => {
-            if (Object.keys(pendingRecords).length > 0) {
+            if (hasUnsavedChanges && Object.keys(pendingRecords).length > 0) {
                 e.preventDefault();
-                e.returnValue = '有未保存的更改，确定要离开吗？';
+                e.returnValue = '⚠️ 有未保存的修改，确定要离开吗？未保存的数据将会丢失！';
                 return e.returnValue;
             }
         });
         
-        // 页面切换
+        // ==================== 页面切换 ====================
         function showPage(pageName) {
+            // 如果有未保存的修改，先保存
+            if (hasUnsavedChanges && Object.keys(pendingRecords).length > 0) {
+                savePendingRecords().then(() => {
+                    switchPage(pageName);
+                });
+            } else {
+                switchPage(pageName);
+            }
+        }
+        
+        function switchPage(pageName) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.sidebar button').forEach(b => b.classList.remove('active'));
             
@@ -373,9 +404,147 @@
             
             if (pageName === 'students') {
                 loadStudents();
+                stopAutoSave();
             } else if (pageName === 'meals') {
                 loadMealSettings();
             }
+        }
+        
+        // ==================== 自动保存功能 ====================
+        
+        // 启动自动保存定时器
+        function startAutoSave() {
+            stopAutoSave();
+            countdownSeconds = 5;
+            updateCountdown();
+            
+            countdownTimer = setInterval(() => {
+                countdownSeconds--;
+                updateCountdown();
+                
+                if (countdownSeconds <= 0) {
+                    if (hasUnsavedChanges && Object.keys(pendingRecords).length > 0) {
+                        savePendingRecords();
+                    }
+                    countdownSeconds = 5;
+                }
+            }, 1000);
+        }
+        
+        // 停止自动保存
+        function stopAutoSave() {
+            if (autoSaveTimer) {
+                clearTimeout(autoSaveTimer);
+                autoSaveTimer = null;
+            }
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
+            }
+            hasUnsavedChanges = false;
+            pendingRecords = {};
+            updateSaveStatus('', '');
+        }
+        
+        // 更新倒计时显示
+        function updateCountdown() {
+            const countdownEl = document.getElementById('auto-save-countdown');
+            if (countdownEl) {
+                countdownEl.textContent = `(${countdownSeconds}s)`;
+            }
+        }
+        
+        // 更新保存状态显示
+        function updateSaveStatus(text, className) {
+            const statusEl = document.getElementById('save-status');
+            if (statusEl) {
+                statusEl.textContent = text;
+                statusEl.className = className;
+            }
+        }
+        
+        // 复选框变化时记录修改
+        function recordChange(checkbox) {
+            const studentId = checkbox.dataset.student;
+            const date = checkbox.dataset.date;
+            const meal = checkbox.dataset.meal;
+            const checked = checkbox.checked;
+            
+            const key = `${studentId}_${date}`;
+            if (!mealRecords[key]) {
+                mealRecords[key] = { breakfast: false, lunch: false, dinner: false };
+            }
+            mealRecords[key][meal] = checked;
+            
+            // 添加到待保存队列
+            pendingRecords[key] = { ...mealRecords[key] };
+            pendingRecords[key].student_id = parseInt(studentId);
+            pendingRecords[key].record_date = date;
+            hasUnsavedChanges = true;
+            
+            // 更新状态显示
+            updateSaveStatus('⏳ 有待保存的修改', 'saving');
+        }
+        
+        // 保存待保存的记录
+        async function savePendingRecords() {
+            if (Object.keys(pendingRecords).length === 0) {
+                updateSaveStatus('⏱️ 自动保存中', '');
+                return;
+            }
+            
+            updateSaveStatus('💾 保存中...', 'saving');
+            
+            const records = Object.values(pendingRecords).map(record => ({
+                student_id: record.student_id,
+                record_date: record.record_date,
+                breakfast: record.breakfast,
+                lunch: record.lunch,
+                dinner: record.dinner
+            }));
+            
+            try {
+                await fetch('/api/meal-records', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ records })
+                });
+                
+                // 保存成功
+                pendingRecords = {};
+                hasUnsavedChanges = false;
+                lastSaveTime = new Date();
+                
+                updateSaveStatus(`✅ 已保存 ${new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute:'2-digit'})}`, 'saved');
+                
+                // 3 秒后恢复倒计时状态
+                setTimeout(() => {
+                    if (!hasUnsavedChanges) {
+                        updateSaveStatus('⏱️ 自动保存中', '');
+                    }
+                }, 3000);
+                
+            } catch (e) {
+                updateSaveStatus('❌ 保存失败：' + e.message, 'error');
+            }
+        }
+        
+        // 手动立即保存
+        async function saveAllRecords() {
+            // 将所有 mealRecords 加入待保存队列
+            for (const [key, value] of Object.entries(mealRecords)) {
+                const [studentId, date] = key.split('_');
+                pendingRecords[key] = {
+                    student_id: parseInt(studentId),
+                    record_date: date,
+                    breakfast: value.breakfast,
+                    lunch: value.lunch,
+                    dinner: value.dinner
+                };
+            }
+            hasUnsavedChanges = true;
+            
+            await savePendingRecords();
         }
         
         // ==================== 学生管理 ====================
@@ -432,6 +601,7 @@
                     document.getElementById('meal-actions').style.display = 'none';
                     document.getElementById('export-section').style.display = 'none';
                     document.getElementById('meal-table-container').innerHTML = '';
+                    stopAutoSave();
                 } else {
                     document.getElementById('semester-alert').style.display = 'none';
                     document.getElementById('meal-stats').style.display = 'flex';
@@ -440,9 +610,10 @@
                     initExportDates();
                     buildMealTable();
                     
-                    // 重置待保存队列
+                    // 重置状态并启动自动保存
                     pendingRecords = {};
                     hasUnsavedChanges = false;
+                    startAutoSave();
                 }
             } catch (e) {
                 console.error('加载设置失败:', e);
@@ -583,115 +754,6 @@
             document.getElementById('meal-table-body').innerHTML = tbody;
         }
         
-        // 复选框变化时更新本地记录并自动保存
-        function recordChange(checkbox) {
-            const studentId = checkbox.dataset.student;
-            const date = checkbox.dataset.date;
-            const meal = checkbox.dataset.meal;
-            const checked = checkbox.checked;
-            
-            const key = `${studentId}_${date}`;
-            if (!mealRecords[key]) {
-                mealRecords[key] = { breakfast: false, lunch: false, dinner: false };
-            }
-            mealRecords[key][meal] = checked;
-            
-            // 添加到待保存队列
-            pendingRecords[key] = { ...mealRecords[key] };
-            pendingRecords[key].student_id = parseInt(studentId);
-            pendingRecords[key].record_date = date;
-            hasUnsavedChanges = true;
-            
-            // 显示保存中状态
-            const status = document.getElementById('save-status');
-            status.textContent = '⏳ 保存中...';
-            status.style.color = '#f39c12';
-            status.classList.add('saving');
-            
-            // 防抖：500ms 后保存
-            clearTimeout(autoSaveTimer);
-            autoSaveTimer = setTimeout(async () => {
-                await savePendingRecords();
-            }, 500);
-        }
-        
-        // 保存待保存的记录
-        async function savePendingRecords() {
-            const status = document.getElementById('save-status');
-            
-            const records = Object.values(pendingRecords).map(record => ({
-                student_id: record.student_id,
-                record_date: record.record_date,
-                breakfast: record.breakfast,
-                lunch: record.lunch,
-                dinner: record.dinner
-            }));
-            
-            if (records.length === 0) {
-                status.textContent = '';
-                status.classList.remove('saving');
-                return;
-            }
-            
-            try {
-                await fetch('/api/meal-records', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ records })
-                });
-                
-                status.textContent = '✅ 已自动保存';
-                status.style.color = '#27ae60';
-                status.classList.remove('saving');
-                
-                pendingRecords = {};
-                hasUnsavedChanges = false;
-                
-                setTimeout(() => {
-                    if (status.textContent === '✅ 已自动保存') {
-                        status.textContent = '';
-                    }
-                }, 3000);
-                
-            } catch (e) {
-                status.textContent = '❌ 保存失败：' + e.message;
-                status.style.color = '#e74c3c';
-                status.classList.remove('saving');
-            }
-        }
-        
-        // 保存所有记录（保留手动保存按钮）
-        async function saveAllRecords() {
-            const status = document.getElementById('save-status');
-            status.textContent = '保存中...';
-            
-            const records = [];
-            for (const [key, value] of Object.entries(mealRecords)) {
-                const [studentId, date] = key.split('_');
-                records.push({
-                    student_id: parseInt(studentId),
-                    record_date: date,
-                    breakfast: value.breakfast,
-                    lunch: value.lunch,
-                    dinner: value.dinner
-                });
-            }
-            
-            try {
-                await fetch('/api/meal-records', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ records })
-                });
-                status.textContent = '✅ 保存成功！';
-                status.style.color = '#27ae60';
-                setTimeout(() => { status.textContent = ''; }, 3000);
-            } catch (e) {
-                status.textContent = '❌ 保存失败：' + e.message;
-                status.style.color = '#e74c3c';
-            }
-        }
-        
         // ==================== 导出功能 ====================
         
         function initExportDates() {
@@ -702,6 +764,11 @@
         }
         
         async function exportCSV() {
+            // 先保存未保存的修改
+            if (hasUnsavedChanges && Object.keys(pendingRecords).length > 0) {
+                await savePendingRecords();
+            }
+            
             const startDate = document.getElementById('export-start').value;
             const endDate = document.getElementById('export-end').value;
             const onlyRefund = document.getElementById('only-refund').checked;
@@ -725,6 +792,11 @@
         }
         
         async function exportXLSX() {
+            // 先保存未保存的修改
+            if (hasUnsavedChanges && Object.keys(pendingRecords).length > 0) {
+                await savePendingRecords();
+            }
+            
             const startDate = document.getElementById('export-start').value;
             const endDate = document.getElementById('export-end').value;
             const onlyRefund = document.getElementById('only-refund').checked;
