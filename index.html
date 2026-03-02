@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>学生管理系统</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; }
+        .form-group { margin-bottom: 1rem; }
+        input { padding: 0.5rem; width: 200px; }
+        button { padding: 0.5rem 1rem; cursor: pointer; }
+        table { width: 100%; border-collapse: collapse; margin-top: 2rem; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    </style>
+</head>
+<body>
+    <h1>学生管理系统</h1>
+    
+    <div class="form-group">
+        <input id="name" placeholder="姓名">
+        <input id="student_id" placeholder="学号">
+        <input id="class_name" placeholder="班级">
+        <button onclick="addStudent()">添加学生</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr><th>姓名</th><th>学号</th><th>班级</th></tr>
+        </thead>
+        <tbody id="student-list"></tbody>
+    </table>
+
+    <script>
+        // 加载数据
+        async function loadStudents() {
+            const res = await fetch('/api/students');
+            const data = await res.json();
+            const tbody = document.getElementById('student-list');
+            tbody.innerHTML = data.map(s => `
+                <tr>
+                    <td>${s.name}</td>
+                    <td>${s.student_id}</td>
+                    <td>${s.class_name}</td>
+                </tr>
+            `).join('');
+        }
+
+        // 添加数据
+        async function addStudent() {
+            const name = document.getElementById('name').value;
+            const student_id = document.getElementById('student_id').value;
+            const class_name = document.getElementById('class_name').value;
+
+            await fetch('/api/students', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, student_id, class_name })
+            });
+            
+            // 清空输入并刷新
+            document.getElementById('name').value = '';
+            document.getElementById('student_id').value = '';
+            document.getElementById('class_name').value = '';
+            loadStudents();
+        }
+
+        // 初始化
+        loadStudents();
+    </script>
+</body>
+</html>
