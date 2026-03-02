@@ -212,6 +212,16 @@
             font-size: 0.9rem;
         }
         
+        /* 保存状态动画 */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+        .saving {
+            animation: pulse 1s infinite;
+        }
+        
         /* 响应式 */
         @media (max-width: 768px) {
             .sidebar { width: 150px; }
@@ -277,7 +287,7 @@
             <!-- 操作栏 -->
             <div id="meal-actions" style="display:none; margin-bottom:1rem;">
                 <button class="btn-primary" onclick="openSettingsModal()">📅 修改学期日期</button>
-                <button class="btn-success" onclick="saveAllRecords()">💾 保存所有记录</button>
+                <button class="btn-success" onclick="saveAllRecords()">💾 手动保存</button>
                 <span id="save-status" style="margin-left:1rem; color:#666;"></span>
             </div>
             
@@ -299,7 +309,7 @@
                     <button class="btn-primary" onclick="exportXLSX()">📗 导出 Excel</button>
                 </div>
                 <div class="hint">
-                    💡 日期格式：月。日（如 9.1+9.5），多个日期用 + 连接。只导出有未就餐记录的学生可筛选掉无需退费的。
+                    💡 日期格式：月。日（如 9.1+9.5），多个日期用 + 连接。勾选后只导出有未就餐记录的学生。
                 </div>
             </div>
             
@@ -309,6 +319,11 @@
                     <thead id="meal-table-head"></thead>
                     <tbody id="meal-table-body"></tbody>
                 </table>
+            </div>
+            
+            <!-- 自动保存提示 -->
+            <div style="margin-top:1rem; color:#666; font-size:0.85rem;">
+                ✅ 勾选后会自动保存，无需手动点击保存按钮
             </div>
         </div>
     </div>
@@ -334,7 +349,19 @@
         // 全局状态
         let students = [];
         let mealSettings = null;
-        let mealRecords = {}; // 格式：{ "studentId_date": { breakfast, lunch, dinner } }
+        let mealRecords = {};
+        let autoSaveTimer = null;
+        let pendingRecords = {};
+        let hasUnsavedChanges = false;
+        
+        // 页面离开前提醒
+        window.addEventListener('beforeunload', (e) => {
+            if (Object.keys(pendingRecords).length > 0) {
+                e.preventDefault();
+                e.returnValue = '有未保存的更改，确定要离开吗？';
+                return e.returnValue;
+            }
+        });
         
         // 页面切换
         function showPage(pageName) {
@@ -412,6 +439,10 @@
                     document.getElementById('export-section').style.display = 'block';
                     initExportDates();
                     buildMealTable();
+                    
+                    // 重置待保存队列
+                    pendingRecords = {};
+                    hasUnsavedChanges = false;
                 }
             } catch (e) {
                 console.error('加载设置失败:', e);
@@ -460,7 +491,7 @@
         // 判断是否为工作日（排除周末）
         function isWeekday(date) {
             const day = date.getDay();
-            return day !== 0 && day !== 6; // 0=周日，6=周六
+            return day !== 0 && day !== 6;
         }
         
         // 生成日期范围内的所有工作日
@@ -492,7 +523,6 @@
                 const res = await fetch('/api/meal-records');
                 const records = await res.json();
                 
-                // 转换为便于查找的格式
                 mealRecords = {};
                 records.forEach(r => {
                     const key = `${r.student_id}_${r.record_date}`;
@@ -506,15 +536,12 @@
                 console.error('加载记录失败:', e);
             }
             
-            // 获取工作日列表
             const workDays = getWorkDays(mealSettings.semester_start, mealSettings.semester_end);
             
-            // 更新统计
             document.getElementById('stat-total-days').textContent = workDays.length;
             document.getElementById('stat-work-days').textContent = workDays.length;
             document.getElementById('stat-students').textContent = students.length;
             
-            // 构建表头
             let thead = '<tr><th style="min-width:100px;position:sticky;left:0;background:#34495e;z-index:2;">姓名</th>';
             workDays.forEach(date => {
                 const dateObj = new Date(date);
@@ -527,7 +554,6 @@
             });
             thead += '</tr>';
             
-            // 表头第二行（早中晚）
             thead += '<tr><th style="position:sticky;left:0;background:#34495e;z-index:2;"></th>';
             workDays.forEach(() => {
                 thead += '<th class="meal-sub">早</th><th class="meal-sub">中</th><th class="meal-sub">晚</th>';
@@ -536,7 +562,6 @@
             
             document.getElementById('meal-table-head').innerHTML = thead;
             
-            // 构建表格主体
             let tbody = '';
             students.forEach(student => {
                 tbody += `<tr><td style="position:sticky;left:0;background:white;z-index:1;font-weight:bold;">${student.name}</td>`;
@@ -558,7 +583,7 @@
             document.getElementById('meal-table-body').innerHTML = tbody;
         }
         
-        // 复选框变化时更新本地记录
+        // 复选框变化时更新本地记录并自动保存
         function recordChange(checkbox) {
             const studentId = checkbox.dataset.student;
             const date = checkbox.dataset.date;
@@ -570,14 +595,76 @@
                 mealRecords[key] = { breakfast: false, lunch: false, dinner: false };
             }
             mealRecords[key][meal] = checked;
+            
+            // 添加到待保存队列
+            pendingRecords[key] = { ...mealRecords[key] };
+            pendingRecords[key].student_id = parseInt(studentId);
+            pendingRecords[key].record_date = date;
+            hasUnsavedChanges = true;
+            
+            // 显示保存中状态
+            const status = document.getElementById('save-status');
+            status.textContent = '⏳ 保存中...';
+            status.style.color = '#f39c12';
+            status.classList.add('saving');
+            
+            // 防抖：500ms 后保存
+            clearTimeout(autoSaveTimer);
+            autoSaveTimer = setTimeout(async () => {
+                await savePendingRecords();
+            }, 500);
         }
         
-        // 保存所有记录
+        // 保存待保存的记录
+        async function savePendingRecords() {
+            const status = document.getElementById('save-status');
+            
+            const records = Object.values(pendingRecords).map(record => ({
+                student_id: record.student_id,
+                record_date: record.record_date,
+                breakfast: record.breakfast,
+                lunch: record.lunch,
+                dinner: record.dinner
+            }));
+            
+            if (records.length === 0) {
+                status.textContent = '';
+                status.classList.remove('saving');
+                return;
+            }
+            
+            try {
+                await fetch('/api/meal-records', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ records })
+                });
+                
+                status.textContent = '✅ 已自动保存';
+                status.style.color = '#27ae60';
+                status.classList.remove('saving');
+                
+                pendingRecords = {};
+                hasUnsavedChanges = false;
+                
+                setTimeout(() => {
+                    if (status.textContent === '✅ 已自动保存') {
+                        status.textContent = '';
+                    }
+                }, 3000);
+                
+            } catch (e) {
+                status.textContent = '❌ 保存失败：' + e.message;
+                status.style.color = '#e74c3c';
+                status.classList.remove('saving');
+            }
+        }
+        
+        // 保存所有记录（保留手动保存按钮）
         async function saveAllRecords() {
             const status = document.getElementById('save-status');
             status.textContent = '保存中...';
             
-            // 转换为数组格式
             const records = [];
             for (const [key, value] of Object.entries(mealRecords)) {
                 const [studentId, date] = key.split('_');
@@ -597,9 +684,11 @@
                     body: JSON.stringify({ records })
                 });
                 status.textContent = '✅ 保存成功！';
+                status.style.color = '#27ae60';
                 setTimeout(() => { status.textContent = ''; }, 3000);
             } catch (e) {
                 status.textContent = '❌ 保存失败：' + e.message;
+                status.style.color = '#e74c3c';
             }
         }
         
@@ -651,30 +740,25 @@
             }
             
             try {
-                // 先获取数据
                 const res = await fetch(`/api/export-meals?start=${startDate}&end=${endDate}&only_refund=${onlyRefund}`);
                 const blob = await res.blob();
                 const text = await blob.text();
                 
-                // 解析 CSV
                 const rows = parseCSV(text);
                 
-                // 使用 SheetJS 生成 Excel
                 const worksheet = XLSX.utils.aoa_to_sheet(rows);
                 
-                // 设置列宽
                 worksheet['!cols'] = [
-                    { wch: 15 },  // 姓名
-                    { wch: 35 },  // 早饭日期
-                    { wch: 35 },  // 午饭日期
-                    { wch: 35 },  // 晚饭日期
-                    { wch: 10 },  // 早饭次数
-                    { wch: 10 },  // 午饭次数
-                    { wch: 10 },  // 晚饭次数
-                    { wch: 10 }   // 总次数
+                    { wch: 15 },
+                    { wch: 35 },
+                    { wch: 35 },
+                    { wch: 35 },
+                    { wch: 10 },
+                    { wch: 10 },
+                    { wch: 10 },
+                    { wch: 10 }
                 ];
                 
-                // 设置表头样式
                 const range = XLSX.utils.decode_range(worksheet['!ref']);
                 for (let C = range.s.c; C <= range.e.c; ++C) {
                     const address = XLSX.utils.encode_cell({ r: 0, c: C });
@@ -689,7 +773,6 @@
                 const workbook = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(workbook, worksheet, '餐费统计');
                 
-                // 下载文件
                 const refundText = onlyRefund ? '_需退费' : '';
                 XLSX.writeFile(workbook, `餐费统计${refundText}_${startDate}_至_${endDate}.xlsx`);
                 
@@ -698,7 +781,6 @@
             }
         }
         
-        // 解析 CSV 文本
         function parseCSV(text) {
             const rows = [];
             const lines = text.split('\n');
