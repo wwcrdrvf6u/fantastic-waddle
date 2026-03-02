@@ -119,6 +119,10 @@
             border-radius: 4px;
             margin-right: 1rem;
         }
+        .form-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 0.5rem;
+        }
         
         /* 日期表格特殊样式 */
         .date-table th, .date-table td { padding: 4px; text-align: center; }
@@ -285,11 +289,17 @@
                     <input type="date" id="export-start">
                     <label>结束日期：</label>
                     <input type="date" id="export-end">
+                </div>
+                <div class="form-group">
+                    <label style="display:inline-flex; align-items:center; margin-right:1rem;">
+                        <input type="checkbox" id="only-refund" style="width:auto; margin-right:0.5rem;">
+                        只导出需要退费的（有未就餐记录）
+                    </label>
                     <button class="btn-primary" onclick="exportCSV()">📥 导出 CSV</button>
                     <button class="btn-primary" onclick="exportXLSX()">📗 导出 Excel</button>
                 </div>
                 <div class="hint">
-                    💡 CSV 可用 Excel 打开，Excel 格式支持更好的样式。日期之间用 + 连接，方便查看。
+                    💡 日期格式：月。日（如 9.1+9.5），多个日期用 + 连接。只导出有未就餐记录的学生可筛选掉无需退费的。
                 </div>
             </div>
             
@@ -605,6 +615,7 @@
         async function exportCSV() {
             const startDate = document.getElementById('export-start').value;
             const endDate = document.getElementById('export-end').value;
+            const onlyRefund = document.getElementById('only-refund').checked;
             
             if (!startDate || !endDate) {
                 alert('请选择开始和结束日期');
@@ -617,7 +628,7 @@
             }
             
             try {
-                const downloadUrl = `/api/export-meals?start=${startDate}&end=${endDate}`;
+                const downloadUrl = `/api/export-meals?start=${startDate}&end=${endDate}&only_refund=${onlyRefund}`;
                 window.open(downloadUrl, '_blank');
             } catch (e) {
                 alert('导出失败：' + e.message);
@@ -627,6 +638,7 @@
         async function exportXLSX() {
             const startDate = document.getElementById('export-start').value;
             const endDate = document.getElementById('export-end').value;
+            const onlyRefund = document.getElementById('only-refund').checked;
             
             if (!startDate || !endDate) {
                 alert('请选择开始和结束日期');
@@ -640,7 +652,7 @@
             
             try {
                 // 先获取数据
-                const res = await fetch(`/api/export-meals?start=${startDate}&end=${endDate}`);
+                const res = await fetch(`/api/export-meals?start=${startDate}&end=${endDate}&only_refund=${onlyRefund}`);
                 const blob = await res.blob();
                 const text = await blob.text();
                 
@@ -652,20 +664,34 @@
                 
                 // 设置列宽
                 worksheet['!cols'] = [
-                    { wch: 15 },
-                    { wch: 40 },
-                    { wch: 10 },
-                    { wch: 40 },
-                    { wch: 10 },
-                    { wch: 40 },
-                    { wch: 10 }
+                    { wch: 15 },  // 姓名
+                    { wch: 35 },  // 早饭日期
+                    { wch: 35 },  // 午饭日期
+                    { wch: 35 },  // 晚饭日期
+                    { wch: 10 },  // 早饭次数
+                    { wch: 10 },  // 午饭次数
+                    { wch: 10 },  // 晚饭次数
+                    { wch: 10 }   // 总次数
                 ];
+                
+                // 设置表头样式
+                const range = XLSX.utils.decode_range(worksheet['!ref']);
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const address = XLSX.utils.encode_cell({ r: 0, c: C });
+                    if (!worksheet[address]) continue;
+                    worksheet[address].s = {
+                        font: { bold: true, color: { rgb: "FFFFFF" } },
+                        fill: { fgColor: { rgb: "34495E" } },
+                        alignment: { horizontal: "center", vertical: "center" }
+                    };
+                }
                 
                 const workbook = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(workbook, worksheet, '餐费统计');
                 
                 // 下载文件
-                XLSX.writeFile(workbook, `餐费统计_${startDate}_至_${endDate}.xlsx`);
+                const refundText = onlyRefund ? '_需退费' : '';
+                XLSX.writeFile(workbook, `餐费统计${refundText}_${startDate}_至_${endDate}.xlsx`);
                 
             } catch (e) {
                 alert('导出失败：' + e.message);

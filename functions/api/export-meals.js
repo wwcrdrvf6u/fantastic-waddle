@@ -5,6 +5,7 @@ export async function onRequestGet({ env, request }) {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('start');
     const endDate = searchParams.get('end');
+    const onlyRefund = searchParams.get('only_refund') === 'true'; // 是否只导出需要退费的
     
     if (!startDate || !endDate) {
       return Response.json({ error: '请提供开始和结束日期' }, { status: 400 });
@@ -13,6 +14,7 @@ export async function onRequestGet({ env, request }) {
     // 查询所有记录
     const { results } = await env.DB.prepare(`
       SELECT 
+        s.id as student_id,
         s.name,
         mr.record_date,
         mr.breakfast,
@@ -28,8 +30,8 @@ export async function onRequestGet({ env, request }) {
     const studentStats = {};
     
     results.forEach(record => {
-      if (!studentStats[record.name]) {
-        studentStats[record.name] = {
+      if (!studentStats[record.student_id]) {
+        studentStats[record.student_id] = {
           name: record.name,
           breakfast_dates: [],
           lunch_dates: [],
@@ -40,33 +42,47 @@ export async function onRequestGet({ env, request }) {
         };
       }
       
+      // 转换日期格式：2024-09-01 -> 9.1
+      const dateObj = new Date(record.record_date);
+      const shortDate = `${dateObj.getMonth() + 1}.${dateObj.getDate()}`;
+      
       if (record.breakfast === 1) {
-        studentStats[record.name].breakfast_dates.push(record.record_date);
-        studentStats[record.name].breakfast_count++;
+        studentStats[record.student_id].breakfast_dates.push(shortDate);
+        studentStats[record.student_id].breakfast_count++;
       }
       if (record.lunch === 1) {
-        studentStats[record.name].lunch_dates.push(record.record_date);
-        studentStats[record.name].lunch_count++;
+        studentStats[record.student_id].lunch_dates.push(shortDate);
+        studentStats[record.student_id].lunch_count++;
       }
       if (record.dinner === 1) {
-        studentStats[record.name].dinner_dates.push(record.record_date);
-        studentStats[record.name].dinner_count++;
+        studentStats[record.student_id].dinner_dates.push(shortDate);
+        studentStats[record.student_id].dinner_count++;
       }
     });
     
     // 转换为 CSV 格式
     const csvRows = [];
-    csvRows.push(['姓名', '早饭未就餐日期', '早饭次数', '午饭未就餐日期', '午饭次数', '晚饭未就餐日期', '晚饭次数']);
+    
+    // 表头：先日期列，后次数列
+    csvRows.push(['姓名', '早饭未就餐日期', '午饭未就餐日期', '晚饭未就餐日期', '早饭次数', '午饭次数', '晚饭次数', '总次数']);
     
     Object.values(studentStats).forEach(stat => {
+      const totalCount = stat.breakfast_count + stat.lunch_count + stat.dinner_count;
+      
+      // 如果只导出需要退费的，跳过总次数为 0 的
+      if (onlyRefund && totalCount === 0) {
+        return;
+      }
+      
       csvRows.push([
         stat.name,
         stat.breakfast_dates.join('+'),
-        stat.breakfast_count,
         stat.lunch_dates.join('+'),
-        stat.lunch_count,
         stat.dinner_dates.join('+'),
-        stat.dinner_count
+        stat.breakfast_count,
+        stat.lunch_count,
+        stat.dinner_count,
+        totalCount
       ]);
     });
     
@@ -86,10 +102,11 @@ export async function onRequestGet({ env, request }) {
     const csvBlob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
     
     // 返回文件
+    const refundText = onlyRefund ? '_需退费' : '';
     return new Response(csvBlob, {
       headers: {
         'Content-Type': 'text/csv;charset=utf-8',
-        'Content-Disposition': `attachment; filename="餐费统计_${startDate}_至_${endDate}.csv"`
+        'Content-Disposition': `attachment; filename="餐费统计${refundText}_${startDate}_至_${endDate}.csv"`
       }
     });
     
