@@ -5,7 +5,7 @@ export async function onRequestGet({ env, request }) {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('start');
     const endDate = searchParams.get('end');
-    const onlyRefund = searchParams.get('only_refund') === 'true'; // 是否只导出需要退费的
+    const onlyRefund = searchParams.get('only_refund') === 'true';
     
     if (!startDate || !endDate) {
       return Response.json({ error: '请提供开始和结束日期' }, { status: 400 });
@@ -66,13 +66,24 @@ export async function onRequestGet({ env, request }) {
     // 表头：先日期列，后次数列
     csvRows.push(['姓名', '早饭未就餐日期', '午饭未就餐日期', '晚饭未就餐日期', '早饭次数', '午饭次数', '晚饭次数', '总次数']);
     
-    Object.values(studentStats).forEach(stat => {
+    // 先过滤出需要导出的学生
+    const studentsToExport = Object.values(studentStats).filter(stat => {
       const totalCount = stat.breakfast_count + stat.lunch_count + stat.dinner_count;
       
-      // 如果只导出需要退费的，跳过总次数为 0 的
-      if (onlyRefund && totalCount === 0) {
-        return;
+      // 如果只导出需要退费的，只保留总次数 > 0 的
+      if (onlyRefund) {
+        return totalCount > 0;
       }
+      // 否则全部保留
+      return true;
+    });
+    
+    // 按姓名排序（保证顺序一致）
+    studentsToExport.sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+    
+    // 添加数据行
+    studentsToExport.forEach(stat => {
+      const totalCount = stat.breakfast_count + stat.lunch_count + stat.dinner_count;
       
       csvRows.push([
         stat.name,
@@ -89,7 +100,6 @@ export async function onRequestGet({ env, request }) {
     // 生成 CSV 内容
     const csvContent = csvRows.map(row => 
       row.map(cell => {
-        // 处理包含逗号或引号的内容
         if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"') || cell.includes('\n'))) {
           return `"${cell.replace(/"/g, '""')}"`;
         }
