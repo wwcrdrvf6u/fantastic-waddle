@@ -4,74 +4,544 @@
     <meta charset="UTF-8">
     <title>学生管理系统</title>
     <style>
-        body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        * { box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            margin: 0; 
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        /* 左侧菜单 */
+        .sidebar {
+            width: 200px;
+            background: #2c3e50;
+            color: white;
+            padding: 1rem 0;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+        }
+        .sidebar h2 {
+            padding: 0 1.5rem;
+            margin: 0 0 1.5rem 0;
+            font-size: 1.2rem;
+            border-bottom: 1px solid #34495e;
+            padding-bottom: 1rem;
+        }
+        .sidebar button {
+            display: block;
+            width: 100%;
+            padding: 0.8rem 1.5rem;
+            background: none;
+            border: none;
+            color: #bdc3c7;
+            text-align: left;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+        .sidebar button:hover, .sidebar button.active {
+            background: #34495e;
+            color: white;
+        }
+        
+        /* 主内容区 */
+        .main {
+            margin-left: 200px;
+            flex: 1;
+            padding: 2rem;
+            background: #f5f6fa;
+        }
+        
+        /* 页面切换 */
+        .page { display: none; }
+        .page.active { display: block; }
+        
+        /* 通用样式 */
+        h1 { color: #2c3e50; margin-top: 0; }
         textarea { 
             width: 100%; 
-            height: 150px;  /* 输入框变高 */
+            height: 150px; 
             padding: 0.5rem; 
             font-size: 1rem;
             margin-bottom: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
         }
-        button { padding: 0.5rem 1rem; cursor: pointer; font-size: 1rem; }
-        table { width: 100%; border-collapse: collapse; margin-top: 2rem; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background: #f5f5f5; }
-        .hint { color: #666; font-size: 0.9rem; margin-bottom: 0.5rem; }
+        button.btn-primary { 
+            padding: 0.5rem 1rem; 
+            cursor: pointer; 
+            font-size: 1rem;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button.btn-primary:hover { background: #2980b9; }
+        button.btn-success { 
+            padding: 0.5rem 1rem; 
+            cursor: pointer; 
+            font-size: 1rem;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button.btn-success:hover { background: #219a52; }
+        
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 1rem; 
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        th, td { 
+            border: 1px solid #ddd; 
+            padding: 8px; 
+            text-align: left; 
+            font-size: 0.9rem;
+        }
+        th { background: #34495e; color: white; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        
+        /* 表单样式 */
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; color: #666; }
+        .form-group input[type="date"] { 
+            padding: 0.5rem; 
+            border: 1px solid #ddd; 
+            border-radius: 4px;
+            margin-right: 1rem;
+        }
+        
+        /* 日期表格特殊样式 */
+        .date-table th, .date-table td { padding: 4px; text-align: center; }
+        .date-table .date-header { background: #3498db; color: white; }
+        .date-table .meal-sub { font-size: 0.75rem; color: #666; }
+        .date-table .weekday { background: #ecf0f1; }
+        .date-table .weekend { background: #ffeaa7; }
+        
+        /* 复选框样式 */
+        input[type="checkbox"] { 
+            width: 16px; 
+            height: 16px; 
+            cursor: pointer;
+        }
+        
+        /* 模态框 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        .modal.active { display: flex; justify-content: center; align-items: center; }
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 90%;
+        }
+        .modal-content h3 { margin-top: 0; }
+        .modal-content .form-group { margin-bottom: 1rem; }
+        .modal-content button { margin-right: 0.5rem; }
+        
+        /* 提示信息 */
+        .alert {
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        .alert-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        
+        /* 加载状态 */
+        .loading { text-align: center; padding: 2rem; color: #666; }
+        
+        /* 统计信息 */
+        .stats { 
+            display: flex; 
+            gap: 1rem; 
+            margin-bottom: 1rem; 
+            flex-wrap: wrap;
+        }
+        .stat-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            min-width: 150px;
+        }
+        .stat-card .value { font-size: 1.5rem; font-weight: bold; color: #3498db; }
+        .stat-card .label { color: #666; font-size: 0.9rem; }
     </style>
 </head>
 <body>
-    <h1>学生管理系统</h1>
+    <!-- 左侧菜单 -->
+    <div class="sidebar">
+        <h2>📚 学生管理系统</h2>
+        <button onclick="showPage('students')" id="btn-students" class="active">👨‍🎓 学生管理</button>
+        <button onclick="showPage('meals')" id="btn-meals">🍽️ 餐费退费</button>
+    </div>
     
-    <div class="form-group">
-        <label class="hint">请输入姓名，每行一个：</label>
-        <textarea id="names" placeholder="张三&#10;李四&#10;王五"></textarea>
-        <button onclick="addStudents()">批量添加</button>
+    <!-- 主内容区 -->
+    <div class="main">
+        <!-- 学生管理页面 -->
+        <div id="page-students" class="page active">
+            <h1>学生管理</h1>
+            
+            <div class="form-group">
+                <label class="hint">请输入姓名，每行一个：</label>
+                <textarea id="names" placeholder="张三&#10;李四&#10;王五"></textarea>
+                <button class="btn-primary" onclick="addStudents()">批量添加学生</button>
+            </div>
+
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>姓名</th><th>添加时间</th></tr>
+                </thead>
+                <tbody id="student-list"><tr><td colspan="3" class="loading">加载中...</td></tr></tbody>
+            </table>
+        </div>
+        
+        <!-- 餐费退费页面 -->
+        <div id="page-meals" class="page">
+            <h1>餐费退费管理</h1>
+            
+            <!-- 学期设置提示 -->
+            <div id="semester-alert" class="alert alert-warning" style="display:none;">
+                ⚠️ 请先设置本学期开始和结束日期
+                <button class="btn-primary" style="margin-left:1rem;" onclick="openSettingsModal()">设置日期</button>
+            </div>
+            
+            <!-- 统计信息 -->
+            <div class="stats" id="meal-stats" style="display:none;">
+                <div class="stat-card">
+                    <div class="value" id="stat-total-days">0</div>
+                    <div class="label">总天数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value" id="stat-work-days">0</div>
+                    <div class="label">工作日</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value" id="stat-students">0</div>
+                    <div class="label">学生数</div>
+                </div>
+            </div>
+            
+            <!-- 操作栏 -->
+            <div id="meal-actions" style="display:none; margin-bottom:1rem;">
+                <button class="btn-primary" onclick="openSettingsModal()">📅 修改学期日期</button>
+                <button class="btn-success" onclick="saveAllRecords()">💾 保存所有记录</button>
+                <span id="save-status" style="margin-left:1rem; color:#666;"></span>
+            </div>
+            
+            <!-- 日期表格 -->
+            <div id="meal-table-container" style="overflow-x:auto;">
+                <table class="date-table" id="meal-table">
+                    <thead id="meal-table-head"></thead>
+                    <tbody id="meal-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 学期设置模态框 -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <h3>📅 设置学期日期</h3>
+            <div class="form-group">
+                <label>学期开始日期：</label>
+                <input type="date" id="semester-start">
+            </div>
+            <div class="form-group">
+                <label>学期结束日期：</label>
+                <input type="date" id="semester-end">
+            </div>
+            <button class="btn-primary" onclick="saveSettings()">保存</button>
+            <button onclick="closeSettingsModal()">取消</button>
+        </div>
     </div>
 
-    <table>
-        <thead>
-            <tr><th>ID</th><th>姓名</th><th>添加时间</th></tr>
-        </thead>
-        <tbody id="student-list"></tbody>
-    </table>
-
     <script>
-        // 加载数据
-        async function loadStudents() {
-            const res = await fetch('/api/students');
-            const data = await res.json();
-            const tbody = document.getElementById('student-list');
-            tbody.innerHTML = data.map(s => `
-                <tr>
-                    <td>${s.id}</td>
-                    <td>${s.name}</td>
-                    <td>${s.created_at}</td>
-                </tr>
-            `).join('');
+        // 全局状态
+        let students = [];
+        let mealSettings = null;
+        let mealRecords = {}; // 格式：{ "studentId_date": { breakfast, lunch, dinner } }
+        
+        // 页面切换
+        function showPage(pageName) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.sidebar button').forEach(b => b.classList.remove('active'));
+            
+            document.getElementById(`page-${pageName}`).classList.add('active');
+            document.getElementById(`btn-${pageName}`).classList.add('active');
+            
+            if (pageName === 'students') {
+                loadStudents();
+            } else if (pageName === 'meals') {
+                loadMealSettings();
+            }
         }
-
-        // 批量添加学生
+        
+        // ==================== 学生管理 ====================
+        
+        async function loadStudents() {
+            try {
+                const res = await fetch('/api/students');
+                students = await res.json();
+                const tbody = document.getElementById('student-list');
+                tbody.innerHTML = students.map(s => `
+                    <tr>
+                        <td>${s.id}</td>
+                        <td>${s.name}</td>
+                        <td>${s.created_at}</td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                document.getElementById('student-list').innerHTML = `<tr><td colspan="3" style="color:red;">加载失败：${e.message}</td></tr>`;
+            }
+        }
+        
         async function addStudents() {
             const textarea = document.getElementById('names');
-            // 按换行分割，过滤空行
             const names = textarea.value.split('\n').map(n => n.trim()).filter(n => n);
             
             if (names.length === 0) {
                 alert('请输入至少一个姓名');
                 return;
             }
-
-            // 批量发送
-            await fetch('/api/students', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ names: names })
+            
+            try {
+                await fetch('/api/students', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ names: names })
+                });
+                textarea.value = '';
+                loadStudents();
+            } catch (e) {
+                alert('添加失败：' + e.message);
+            }
+        }
+        
+        // ==================== 餐费退费 ====================
+        
+        async function loadMealSettings() {
+            try {
+                const res = await fetch('/api/meal-settings');
+                mealSettings = await res.json();
+                
+                if (!mealSettings) {
+                    document.getElementById('semester-alert').style.display = 'block';
+                    document.getElementById('meal-stats').style.display = 'none';
+                    document.getElementById('meal-actions').style.display = 'none';
+                    document.getElementById('meal-table-container').innerHTML = '';
+                } else {
+                    document.getElementById('semester-alert').style.display = 'none';
+                    document.getElementById('meal-stats').style.display = 'flex';
+                    document.getElementById('meal-actions').style.display = 'block';
+                    buildMealTable();
+                }
+            } catch (e) {
+                console.error('加载设置失败:', e);
+            }
+        }
+        
+        function openSettingsModal() {
+            document.getElementById('settings-modal').classList.add('active');
+            if (mealSettings) {
+                document.getElementById('semester-start').value = mealSettings.semester_start;
+                document.getElementById('semester-end').value = mealSettings.semester_end;
+            }
+        }
+        
+        function closeSettingsModal() {
+            document.getElementById('settings-modal').classList.remove('active');
+        }
+        
+        async function saveSettings() {
+            const start = document.getElementById('semester-start').value;
+            const end = document.getElementById('semester-end').value;
+            
+            if (!start || !end) {
+                alert('请选择开始和结束日期');
+                return;
+            }
+            
+            if (new Date(start) > new Date(end)) {
+                alert('开始日期不能晚于结束日期');
+                return;
+            }
+            
+            try {
+                await fetch('/api/meal-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ start, end })
+                });
+                closeSettingsModal();
+                loadMealSettings();
+            } catch (e) {
+                alert('保存失败：' + e.message);
+            }
+        }
+        
+        // 判断是否为工作日（排除周末）
+        function isWeekday(date) {
+            const day = date.getDay();
+            return day !== 0 && day !== 6; // 0=周日，6=周六
+        }
+        
+        // 生成日期范围内的所有工作日
+        function getWorkDays(startDate, endDate) {
+            const days = [];
+            const current = new Date(startDate);
+            const end = new Date(endDate);
+            
+            while (current <= end) {
+                if (isWeekday(current)) {
+                    days.push(current.toISOString().split('T')[0]);
+                }
+                current.setDate(current.getDate() + 1);
+            }
+            
+            return days;
+        }
+        
+        // 构建餐费表格
+        async function buildMealTable() {
+            if (!mealSettings || students.length === 0) {
+                document.getElementById('meal-table-head').innerHTML = '';
+                document.getElementById('meal-table-body').innerHTML = '<tr><td colspan="2" class="loading">请先添加学生</td></tr>';
+                return;
+            }
+            
+            // 加载已有的就餐记录
+            try {
+                const res = await fetch('/api/meal-records');
+                const records = await res.json();
+                
+                // 转换为便于查找的格式
+                mealRecords = {};
+                records.forEach(r => {
+                    const key = `${r.student_id}_${r.record_date}`;
+                    mealRecords[key] = {
+                        breakfast: r.breakfast === 1,
+                        lunch: r.lunch === 1,
+                        dinner: r.dinner === 1
+                    };
+                });
+            } catch (e) {
+                console.error('加载记录失败:', e);
+            }
+            
+            // 获取工作日列表
+            const workDays = getWorkDays(mealSettings.semester_start, mealSettings.semester_end);
+            
+            // 更新统计
+            const allDays = getWorkDays(mealSettings.semester_start, mealSettings.semester_end, false);
+            document.getElementById('stat-total-days').textContent = workDays.length;
+            document.getElementById('stat-work-days').textContent = workDays.length;
+            document.getElementById('stat-students').textContent = students.length;
+            
+            // 构建表头
+            let thead = '<tr><th style="min-width:100px;position:sticky;left:0;background:#34495e;z-index:2;">姓名</th>';
+            workDays.forEach(date => {
+                const dateObj = new Date(date);
+                const weekDay = ['日','一','二','三','四','五','六'][dateObj.getDay()];
+                const isWeekend = !isWeekday(dateObj);
+                thead += `<th class="${isWeekend ? 'weekend' : 'weekday'}" colspan="3">
+                    <div>${date.substring(5)}</div>
+                    <div class="meal-sub">周${weekDay}</div>
+                </th>`;
+            });
+            thead += '</tr>';
+            
+            // 表头第二行（早中晚）
+            thead += '<tr><th style="position:sticky;left:0;background:#34495e;z-index:2;"></th>';
+            workDays.forEach(() => {
+                thead += '<th class="meal-sub">早</th><th class="meal-sub">中</th><th class="meal-sub">晚</th>';
+            });
+            thead += '</tr>';
+            
+            document.getElementById('meal-table-head').innerHTML = thead;
+            
+            // 构建表格主体
+            let tbody = '';
+            students.forEach(student => {
+                tbody += `<tr><td style="position:sticky;left:0;background:white;z-index:1;font-weight:bold;">${student.name}</td>`;
+                
+                workDays.forEach(date => {
+                    const key = `${student.id}_${date}`;
+                    const record = mealRecords[key] || { breakfast: false, lunch: false, dinner: false };
+                    
+                    tbody += `
+                        <td><input type="checkbox" data-student="${student.id}" data-date="${date}" data-meal="breakfast" ${record.breakfast ? 'checked' : ''} onchange="recordChange(this)"></td>
+                        <td><input type="checkbox" data-student="${student.id}" data-date="${date}" data-meal="lunch" ${record.lunch ? 'checked' : ''} onchange="recordChange(this)"></td>
+                        <td><input type="checkbox" data-student="${student.id}" data-date="${date}" data-meal="dinner" ${record.dinner ? 'checked' : ''} onchange="recordChange(this)"></td>
+                    `;
+                });
+                
+                tbody += '</tr>';
             });
             
-            textarea.value = '';  // 清空输入框
-            loadStudents();       // 刷新列表
+            document.getElementById('meal-table-body').innerHTML = tbody;
         }
-
+        
+        // 复选框变化时更新本地记录
+        function recordChange(checkbox) {
+            const studentId = checkbox.dataset.student;
+            const date = checkbox.dataset.date;
+            const meal = checkbox.dataset.meal;
+            const checked = checkbox.checked;
+            
+            const key = `${studentId}_${date}`;
+            if (!mealRecords[key]) {
+                mealRecords[key] = { breakfast: false, lunch: false, dinner: false };
+            }
+            mealRecords[key][meal] = checked;
+        }
+        
+        // 保存所有记录
+        async function saveAllRecords() {
+            const status = document.getElementById('save-status');
+            status.textContent = '保存中...';
+            
+            // 转换为数组格式
+            const records = [];
+            for (const [key, value] of Object.entries(mealRecords)) {
+                const [studentId, date] = key.split('_');
+                records.push({
+                    student_id: parseInt(studentId),
+                    record_date: date,
+                    breakfast: value.breakfast,
+                    lunch: value.lunch,
+                    dinner: value.dinner
+                });
+            }
+            
+            try {
+                await fetch('/api/meal-records', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ records })
+                });
+                status.textContent = '✅ 保存成功！';
+                setTimeout(() => { status.textContent = ''; }, 3000);
+            } catch (e) {
+                status.textContent = '❌ 保存失败：' + e.message;
+            }
+        }
+        
         // 初始化
         loadStudents();
     </script>
