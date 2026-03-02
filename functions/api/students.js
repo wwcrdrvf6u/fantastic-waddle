@@ -1,5 +1,6 @@
 // functions/api/students.js
 
+
 // 获取学生列表 (GET)
 export async function onRequestGet({ env }) {
   try {
@@ -23,4 +24,5 @@ export async function onRequestPost({ env, request }) {
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }
+
 }
