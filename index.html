@@ -2,7 +2,10 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>学生管理系统</title>
+    <!-- SheetJS for Excel export -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
         * { box-sizing: border-box; }
         body { 
@@ -77,6 +80,7 @@
             color: white;
             border: none;
             border-radius: 4px;
+            margin-right: 0.5rem;
         }
         button.btn-primary:hover { background: #2980b9; }
         button.btn-success { 
@@ -181,6 +185,35 @@
         }
         .stat-card .value { font-size: 1.5rem; font-weight: bold; color: #3498db; }
         .stat-card .label { color: #666; font-size: 0.9rem; }
+        
+        /* 导出区域 */
+        #export-section {
+            margin: 1rem 0;
+            padding: 1rem;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        #export-section h3 { margin-top: 0; color: #2c3e50; }
+        #export-section .form-group {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.5rem;
+        }
+        #export-section .hint {
+            margin-top: 0.5rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .sidebar { width: 150px; }
+            .main { margin-left: 150px; padding: 1rem; }
+            .stats { flex-direction: column; }
+        }
     </style>
 </head>
 <body>
@@ -242,6 +275,22 @@
                 <button class="btn-primary" onclick="openSettingsModal()">📅 修改学期日期</button>
                 <button class="btn-success" onclick="saveAllRecords()">💾 保存所有记录</button>
                 <span id="save-status" style="margin-left:1rem; color:#666;"></span>
+            </div>
+            
+            <!-- 导出区域 -->
+            <div id="export-section" style="display:none;">
+                <h3>📊 导出统计</h3>
+                <div class="form-group">
+                    <label>开始日期：</label>
+                    <input type="date" id="export-start">
+                    <label>结束日期：</label>
+                    <input type="date" id="export-end">
+                    <button class="btn-primary" onclick="exportCSV()">📥 导出 CSV</button>
+                    <button class="btn-primary" onclick="exportXLSX()">📗 导出 Excel</button>
+                </div>
+                <div class="hint">
+                    💡 CSV 可用 Excel 打开，Excel 格式支持更好的样式。日期之间用 + 连接，方便查看。
+                </div>
             </div>
             
             <!-- 日期表格 -->
@@ -344,11 +393,14 @@
                     document.getElementById('semester-alert').style.display = 'block';
                     document.getElementById('meal-stats').style.display = 'none';
                     document.getElementById('meal-actions').style.display = 'none';
+                    document.getElementById('export-section').style.display = 'none';
                     document.getElementById('meal-table-container').innerHTML = '';
                 } else {
                     document.getElementById('semester-alert').style.display = 'none';
                     document.getElementById('meal-stats').style.display = 'flex';
                     document.getElementById('meal-actions').style.display = 'block';
+                    document.getElementById('export-section').style.display = 'block';
+                    initExportDates();
                     buildMealTable();
                 }
             } catch (e) {
@@ -448,7 +500,6 @@
             const workDays = getWorkDays(mealSettings.semester_start, mealSettings.semester_end);
             
             // 更新统计
-            const allDays = getWorkDays(mealSettings.semester_start, mealSettings.semester_end, false);
             document.getElementById('stat-total-days').textContent = workDays.length;
             document.getElementById('stat-work-days').textContent = workDays.length;
             document.getElementById('stat-students').textContent = students.length;
@@ -540,6 +591,115 @@
             } catch (e) {
                 status.textContent = '❌ 保存失败：' + e.message;
             }
+        }
+        
+        // ==================== 导出功能 ====================
+        
+        function initExportDates() {
+            if (mealSettings) {
+                document.getElementById('export-start').value = mealSettings.semester_start;
+                document.getElementById('export-end').value = mealSettings.semester_end;
+            }
+        }
+        
+        async function exportCSV() {
+            const startDate = document.getElementById('export-start').value;
+            const endDate = document.getElementById('export-end').value;
+            
+            if (!startDate || !endDate) {
+                alert('请选择开始和结束日期');
+                return;
+            }
+            
+            if (new Date(startDate) > new Date(endDate)) {
+                alert('开始日期不能晚于结束日期');
+                return;
+            }
+            
+            try {
+                const downloadUrl = `/api/export-meals?start=${startDate}&end=${endDate}`;
+                window.open(downloadUrl, '_blank');
+            } catch (e) {
+                alert('导出失败：' + e.message);
+            }
+        }
+        
+        async function exportXLSX() {
+            const startDate = document.getElementById('export-start').value;
+            const endDate = document.getElementById('export-end').value;
+            
+            if (!startDate || !endDate) {
+                alert('请选择开始和结束日期');
+                return;
+            }
+            
+            if (new Date(startDate) > new Date(endDate)) {
+                alert('开始日期不能晚于结束日期');
+                return;
+            }
+            
+            try {
+                // 先获取数据
+                const res = await fetch(`/api/export-meals?start=${startDate}&end=${endDate}`);
+                const blob = await res.blob();
+                const text = await blob.text();
+                
+                // 解析 CSV
+                const rows = parseCSV(text);
+                
+                // 使用 SheetJS 生成 Excel
+                const worksheet = XLSX.utils.aoa_to_sheet(rows);
+                
+                // 设置列宽
+                worksheet['!cols'] = [
+                    { wch: 15 },
+                    { wch: 40 },
+                    { wch: 10 },
+                    { wch: 40 },
+                    { wch: 10 },
+                    { wch: 40 },
+                    { wch: 10 }
+                ];
+                
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, '餐费统计');
+                
+                // 下载文件
+                XLSX.writeFile(workbook, `餐费统计_${startDate}_至_${endDate}.xlsx`);
+                
+            } catch (e) {
+                alert('导出失败：' + e.message);
+            }
+        }
+        
+        // 解析 CSV 文本
+        function parseCSV(text) {
+            const rows = [];
+            const lines = text.split('\n');
+            
+            lines.forEach(line => {
+                if (!line.trim()) return;
+                
+                const result = [];
+                let current = '';
+                let inQuotes = false;
+                
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (char === ',' && !inQuotes) {
+                        result.push(current.replace(/^"|"$/g, '').replace(/""/g, '"'));
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                result.push(current.replace(/^"|"$/g, '').replace(/""/g, '"'));
+                rows.push(result);
+            });
+            
+            return rows;
         }
         
         // 初始化
